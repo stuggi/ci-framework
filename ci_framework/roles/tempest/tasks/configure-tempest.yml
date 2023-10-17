@@ -14,7 +14,7 @@
 
 - name: Get credentials data
   register: os_password_data
-  environment:
+  environment: &oc_env
     KUBECONFIG: "{{ cifmw_openshift_kubeconfig }}"
     PATH: "{{ cifmw_path }}"
   ansible.builtin.command:
@@ -29,6 +29,25 @@
   ansible.builtin.template:
     src: clouds.yaml.j2
     dest: "{{ cifmw_tempest_artifacts_basedir }}/clouds.yaml"
+
+- name: Get CA bundle data
+  register: ca_bundle_data
+  environment:
+    <<: *oc_env
+  ansible.builtin.command:
+    cmd: 'oc get secret combined-ca-bundle -n openstack -o "jsonpath={.data.tls-ca-bundle\.pem}" --ignore-not-found'
+
+- name: Get CA bundle
+  when: ca_bundle_data.stdout | length > 0
+  ansible.builtin.set_fact:
+    ca_bundle: >-
+      {{ ca_bundle_data.stdout | ansible.builtin.b64decode }}
+
+- name: Creating tls-ca-bundle.pem
+  when: ca_bundle | length > 0
+  ansible.builtin.copy:
+    dest: "{{ cifmw_tempest_tests_basedir }}/tls-ca-bundle.pem"
+    content: "{{ ca_bundle }}"
 
 # Check README to see examples of how to set cifmw_tempest_tempestconf_profile
 - name: Create profile.yaml file

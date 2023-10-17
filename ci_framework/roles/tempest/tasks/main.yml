@@ -55,6 +55,7 @@
     network: host
     volume:
       - "{{ cifmw_tempest_artifacts_basedir }}/:/var/lib/tempest/external_files:Z"
+      - "{{ cifmw_tempest_tests_basedir }}/tls-ca-bundle.pem:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:Z"
     detach: false
     dns: "{{ cifmw_tempest_dns_servers }}"
     env:
