@@ -49,6 +49,11 @@
     dest: "{{ cifmw_tempest_tests_basedir }}/tls-ca-bundle.pem"
     content: "{{ ca_bundle }}"
 
+- name: Set tls enabled var
+  when: ca_bundle | length > 0
+  ansible.builtin.set_fact:
+    tls_enabled: true
+
 # Check README to see examples of how to set cifmw_tempest_tempestconf_profile
 - name: Create profile.yaml file
   vars:
