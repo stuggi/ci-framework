@@ -45,12 +45,6 @@
   delay: 5
   until: _tempest_fetch_img is success
 
-- name: Tempest volume mounts
-  ansible.builtin.set_fact:
-    tempest_volumes:
-      - "{{ cifmw_tempest_artifacts_basedir }}/:/var/lib/tempest/external_files:Z"
-      - "{{ (tls_enabled) | ternary('{{ cifmw_tempest_tests_basedir }}/tls-ca-bundle.pem:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:Z','') }}"
-
 - name: Run tempest
   become: true
   ignore_errors: true
@@ -60,7 +54,9 @@
     state: started
     auto_remove: "{{ cifmw_tempest_remove_container | default(false) }}"
     network: host
-    volume: "{{ tempest_volumes }}"
+    volume:
+      - "{{ cifmw_tempest_artifacts_basedir }}/:/var/lib/tempest/external_files:Z"
+      - "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:Z"
     detach: false
     dns: "{{ cifmw_tempest_dns_servers }}"
     env:
