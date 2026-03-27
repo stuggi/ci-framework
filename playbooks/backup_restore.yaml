@@ -3,59 +3,84 @@
 #
 # Runs the full lifecycle:
 # 1. Install dependencies (MinIO + OADP)
-# 2. Create backup
-# 3. Cleanup namespace
-# 4. Restore from backup
+# 2. Create a test workload (optional)
+# 3. Create backup
+# 4. Cleanup namespace
+# 5. Restore from backup
 #
 # Each step can be enabled/disabled independently for iterative testing.
 #
 # Prerequisites:
 # - OpenStack control plane deployed and healthy
 # - OpenStackBackupConfig CR created (for backup labeling)
+# - For manual testing on a reproducer, run post_deployment.sh first:
+#     ./post_deployment.sh -e zuul_log_collection=true \
+#       -e cifmw_nolog=false -e cifmw_run_tests=false
 #
-# Usage:
-#   # Full run:
-#   ansible-playbook playbooks/backup_restore.yaml
+# Manual usage (reproducer):
+#   COMMON_ARGS="-i ~/ci-framework-data/artifacts/zuul_inventory.yml \
+#     -e @~/ci-framework-data/parameters/reproducer-variables.yml \
+#     -e @~/ci-framework-data/parameters/openshift-environment.yml"
+#
+#   # Full run (with test workload):
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml \
+#     -e cifmw_backup_restore_create_workload=true
+#
+#   # Full run (without workload):
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml
 #
 #   # Install deps only:
-#   ansible-playbook playbooks/backup_restore.yaml \
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml \
 #     -e cifmw_backup_restore_run_backup=false \
 #     -e cifmw_backup_restore_run_cleanup=false \
 #     -e cifmw_backup_restore_run_restore=false
 #
 #   # Backup only (deps already installed):
-#   ansible-playbook playbooks/backup_restore.yaml \
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml \
 #     -e cifmw_backup_restore_install_deps=false \
 #     -e cifmw_backup_restore_run_cleanup=false \
 #     -e cifmw_backup_restore_run_restore=false
 #
 #   # Cleanup + restore (backup already done):
-#   ansible-playbook playbooks/backup_restore.yaml \
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml \
 #     -e cifmw_backup_restore_install_deps=false \
 #     -e cifmw_backup_restore_run_backup=false \
 #     -e cifmw_backup_restore_backup_timestamp=20260323-144546
 #
 #   # Restore only (cleanup already done):
-#   ansible-playbook playbooks/backup_restore.yaml \
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml \
 #     -e cifmw_backup_restore_install_deps=false \
 #     -e cifmw_backup_restore_run_backup=false \
 #     -e cifmw_backup_restore_run_cleanup=false \
 #     -e cifmw_backup_restore_backup_timestamp=20260323-144546
 #
 #   # With PVC pinning (WaitForFirstConsumer storage):
-#   ansible-playbook playbooks/backup_restore.yaml \
+#   ansible-playbook $COMMON_ARGS playbooks/backup_restore.yaml \
 #     -e cifmw_backup_restore_pin_pvcs=true
 
 - name: Backup and Restore end-to-end test
   hosts: "{{ cifmw_target_host | default('localhost') }}"
-  gather_facts: false
+  gather_facts: true
 
   vars:
     cifmw_backup_restore_install_deps: true
+    cifmw_backup_restore_create_workload: false
     cifmw_backup_restore_run_backup: true
     cifmw_backup_restore_run_cleanup: true
     cifmw_backup_restore_run_restore: true
     # cifmw_backup_restore_backup_timestamp: set this when running restore without backup step
+
+    # Workload creation defaults (used by the update role)
+    cifmw_update_ping_test: true
+    cifmw_update_control_plane_check: false
+    cifmw_update_artifacts_basedir_suffix: "tests/update"
+    cifmw_update_artifacts_basedir: "{{ ansible_user_dir }}/ci-framework-data/{{ cifmw_update_artifacts_basedir_suffix }}"
+    cifmw_update_workload_launch_script: "{{ cifmw_update_artifacts_basedir }}/workload_launch.sh"
+    cifmw_update_timestamper_cmd: >-
+      | awk '{ print strftime("%Y-%m-%d %H:%M:%S |"), $0; fflush(); }'
+    cifmw_update_ping_start_script: "{{ cifmw_update_artifacts_basedir }}/l3_agent_start_ping.sh"
+    cifmw_update_ping_stop_script: "{{ cifmw_update_artifacts_basedir }}/l3_agent_stop_ping.sh"
+    cifmw_update_namespace: "openstack"
 
   tasks:
     - name: Run pre_backup_restore hooks
@@ -81,7 +106,28 @@
       when: cifmw_backup_restore_install_deps | bool
 
     # ========================================
-    # Step 2: Create backup
+    # Step 2: Create test workload
+    # ========================================
+    - name: Create test workload
+      when: cifmw_backup_restore_create_workload | bool
+      block:
+        - name: Generate workload launch script
+          ansible.builtin.include_role:
+            name: update
+            tasks_from: create_test_files.yml
+
+        - name: Create local openstackclient container
+          ansible.builtin.include_role:
+            name: update
+            tasks_from: create_local_openstackclient.yml
+
+        - name: Create the workload instance
+          ansible.builtin.include_role:
+            name: update
+            tasks_from: create_instance.yml
+
+    # ========================================
+    # Step 3: Create backup
     # ========================================
     - name: Create backup
       ansible.builtin.include_role:
