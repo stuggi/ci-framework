@@ -22,7 +22,7 @@
 cifmw_backup_restore_action: ""
 
 # Common
-cifmw_backup_restore_namespace: openstack
+cifmw_backup_restore_namespace: "{{ cifmw_openstack_namespace | default('openstack') }}"
 cifmw_backup_restore_oadp_namespace: openshift-adp
 cifmw_backup_restore_auto_ack: false
 

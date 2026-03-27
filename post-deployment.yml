@@ -50,6 +50,14 @@
       tags:
         - run-tests
 
+    # Backup and Restore end-to-end test
+    - name: Run backup and restore test
+      when: cifmw_run_backup_restore_test | default(false) | bool
+      tags:
+        - backup-restore
+      ansible.builtin.include_tasks:
+        file: playbooks/backup_restore_tasks.yaml
+
     - name: Run compliance scan for controllers
       ansible.builtin.import_role:
         name: compliance
