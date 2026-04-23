@@ -227,6 +227,7 @@ fsid
 fultonj
 fusco
 fwcybtb
+Galera
 gapped
 genericcloud
 genindex
@@ -418,6 +419,7 @@ num
 nvme
 nwy
 nzgdh
+OADP
 oauth
 observability
 oc
@@ -497,6 +499,8 @@ psathyan
 pubkey
 publicdomain
 pullsecret
+PVC
+PVCs
 pvs
 pwd
 pxe
@@ -573,6 +577,7 @@ sso
 stateful
 stderr
 stdout
+StorageClass
 stp
 str
 stricthostkeychecking
@@ -635,6 +640,7 @@ vcpus
 vda
 venv
 vexxhost
+Velero
 virbr
 virsh
 virt
@@ -659,6 +665,7 @@ vvvv
 vxlan
 vynxgdagahaac
 vzcg
+WaitForFirstConsumer
 websso
 wget
 whitebox
