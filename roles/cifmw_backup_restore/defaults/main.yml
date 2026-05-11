@@ -55,6 +55,7 @@ cifmw_backup_restore_oadp_backup_timeout: 30m
 cifmw_backup_restore_storage_location: velero-1
 cifmw_backup_restore_backup_ttl: 720h
 cifmw_backup_restore_snapshot_move_data: true
+cifmw_backup_restore_swift_xattr_timeout: 300s
 
 # OVN NB/SB database files on PVCs (user-guide backup Step 3 / restore Step 8)
 cifmw_backup_restore_ovn_db: true

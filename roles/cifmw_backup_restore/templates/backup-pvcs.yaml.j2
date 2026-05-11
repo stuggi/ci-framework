@@ -24,3 +24,25 @@ spec:
   volumeSnapshotLocations: []
   storageLocation: {{ cifmw_backup_restore_storage_location }}
   ttl: {{ cifmw_backup_restore_backup_ttl }}
+  hooks:
+    resources:
+      - name: swift-xattr-backup
+        includedNamespaces:
+          - {{ cifmw_backup_restore_namespace }}
+        labelSelector:
+          matchLabels:
+            component: swift-storage
+        pre:
+          - exec:
+              container: object-server
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+                  DUMP="/srv/node/pv/.swift-xattrs.dump"
+                  rm -f "$DUMP"
+                  getfattr -R -d -m user.swift /srv/node/pv/ 1> "$DUMP"
+                  echo "xattr backup complete: $(grep -c '^# file:' "$DUMP") files"
+              onError: Fail
+              timeout: {{ cifmw_backup_restore_swift_xattr_timeout | default('300s') }}
