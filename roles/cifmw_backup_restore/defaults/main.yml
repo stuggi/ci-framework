@@ -71,6 +71,10 @@ cifmw_backup_restore_strict_restore: true
 cifmw_backup_restore_restore_content: data
 cifmw_backup_restore_pin_pvcs: false
 
+# Post-restore service readiness
+cifmw_backup_restore_service_retry_count: 30
+cifmw_backup_restore_service_retry_delay: 10
+
 # Cleanup
 cifmw_backup_restore_cleanup_ctlplane: true
 cifmw_backup_restore_cleanup_dataplane: true
