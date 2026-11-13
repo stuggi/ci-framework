@@ -1,0 +1,38 @@
+---
+# Read the public endpoint hostnames and the MetalLB VIP from the architecture
+# overlay that defines them (spec.*.override.service.*endpointURL and the
+# metallb loadBalancerIPs annotation). Sets _public_endpoints_fqdns and
+# _public_endpoints_vips. Included by the public_endpoints_* hooks.
+#
+#   cifmw_architecture_repo: path to the local checkout of the architecture repository
+#   cifmw_public_endpoints_overlay: kustomization file holding the endpointURLs
+#       (default examples/va/hci-public-lb/overlay/kustomization.yaml in that checkout)
+- name: Check the overlay exists
+  vars:
+    _overlay: >-
+      {{
+        cifmw_public_endpoints_overlay |
+        default(cifmw_architecture_repo ~ '/examples/va/hci-public-lb/overlay/kustomization.yaml')
+      }}
+  ansible.builtin.stat:
+    path: "{{ _overlay }}"
+  register: _overlay_stat
+
+- name: Assert the overlay is present
+  ansible.builtin.assert:
+    that: _overlay_stat.stat.exists
+    fail_msg: >-
+      Overlay not found at {{ _overlay_stat.stat.path | default('') }}. Ensure cifmw_architecture_repo
+      points to a valid architecture checkout or set cifmw_public_endpoints_overlay.
+
+- name: Read the overlay
+  ansible.builtin.slurp:
+    src: "{{ _overlay_stat.stat.path }}"
+  register: _overlay_content
+
+- name: Extract FQDNs and VIPs
+  vars:
+    _text: "{{ _overlay_content.content | b64decode }}"
+  ansible.builtin.set_fact:
+    _public_endpoints_fqdns: "{{ _text | regex_findall('endpointURL:\\s*https?://([^/:\\s]+)') | unique }}"
+    _public_endpoints_vips: "{{ _text | regex_findall('loadBalancerIPs:\\s*(\\S+)') | unique }}"
