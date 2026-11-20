@@ -1,0 +1,107 @@
+---
+# Apply the policy routing from openstack-operator
+# docs/dev/lb-pub-endpt-reuse/public-endpoint-asymmetric-routing.md: replies from the
+# public LoadBalancer Services on the publicapi pool leave through the publicapi
+# gateway instead of the node default route. Needed when the clients are off-subnet,
+# reached through that gateway.
+#
+# The Service ClusterIPs are read from the cluster, so run it after the control plane
+# is deployed. It is not part of the hci-public-lb stages on purpose: without it the
+# requests from an off-subnet client time out, which is the baseline to compare with.
+#
+# Parameters (defaults match examples/va/hci-public-lb in architecture):
+#   cifmw_public_endpoints_pool: MetalLB pool of the public Services (publicapi)
+#   cifmw_public_endpoints_ns: namespace of the Services (openstack)
+#   cifmw_public_endpoints_iface: VLAN interface on the nodes (publicapi)
+#   cifmw_public_endpoints_subnet: the publicapi subnet (172.21.0.0/24)
+#   cifmw_public_endpoints_gateway: the publicapi gateway (172.21.0.1)
+
+- name: Apply the public endpoints policy routing
+  hosts: localhost
+  gather_facts: false
+  vars:
+    _pool: "{{ cifmw_public_endpoints_pool | default('publicapi') }}"
+    _ns: "{{ cifmw_public_endpoints_ns | default('openstack') }}"
+    _iface: "{{ cifmw_public_endpoints_iface | default('publicapi') }}"
+    _subnet: "{{ cifmw_public_endpoints_subnet | default('172.21.0.0/24') }}"
+    _gateway: "{{ cifmw_public_endpoints_gateway | default('172.21.0.1') }}"
+  module_defaults:
+    kubernetes.core.k8s:
+      kubeconfig: "{{ cifmw_openshift_kubeconfig }}"
+      api_key: "{{ cifmw_openshift_token | default(omit) }}"
+      context: "{{ cifmw_openshift_context | default(omit) }}"
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ cifmw_openshift_kubeconfig }}"
+      api_key: "{{ cifmw_openshift_token | default(omit) }}"
+      context: "{{ cifmw_openshift_context | default(omit) }}"
+  tasks:
+    - name: Get the Services
+      register: _svcs
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        namespace: "{{ _ns }}"
+
+    - name: Get the cluster network
+      register: _net
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: Network
+        name: cluster
+
+    - name: Collect the ClusterIPs of the public Services on the pool
+      vars:
+        _pool_key: metallb.universe.tf/address-pool
+      ansible.builtin.set_fact:
+        _cluster_ips_json: >-
+          {% set _ips = [] %}
+          {% for svc in _svcs.resources %}
+          {%   if svc.spec.type == 'LoadBalancer' and
+                  svc.metadata.annotations is defined and
+                  svc.metadata.annotations.get(_pool_key) == _pool %}
+          {%     set _ = _ips.append(svc.spec.clusterIP) %}
+          {%   endif %}
+          {% endfor %}
+          {{ _ips | unique | sort | to_json }}
+
+    - name: Parse the ClusterIPs
+      ansible.builtin.set_fact:
+        _cluster_ips: "{{ _cluster_ips_json | from_json }}"
+
+    - name: Assert there are Services on the pool
+      ansible.builtin.assert:
+        quiet: true
+        that: _cluster_ips | length > 0
+
+    - name: Apply the policy routing
+      vars:
+        _svc_cidr: "{{ _net.resources[0].status.serviceNetwork[0] }}"
+        _pod_cidr: "{{ _net.resources[0].status.clusterNetwork[0].cidr }}"
+        _rules: >-
+          {% set _r = [
+            {'ip-from': _svc_cidr, 'ip-to': _subnet, 'route-table': 254, 'priority': 200},
+            {'ip-from': _svc_cidr, 'ip-to': _pod_cidr, 'route-table': 254, 'priority': 201}
+          ] %}
+          {% for ip in _cluster_ips %}
+          {%   set _ = _r.append({'ip-from': ip ~ '/32', 'route-table': 620, 'priority': 210 + loop.index0}) %}
+          {% endfor %}
+          {{ _r | to_json }}
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: nmstate.io/v1
+          kind: NodeNetworkConfigurationPolicy
+          metadata:
+            name: openstack-public-api-policy-routing
+          spec:
+            nodeSelector:
+              node-role.kubernetes.io/worker: ""
+            desiredState:
+              routes:
+                config:
+                  - destination: 0.0.0.0/0
+                    next-hop-address: "{{ _gateway }}"
+                    next-hop-interface: "{{ _iface }}"
+                    table-id: 620
+              route-rules:
+                config: "{{ _rules | from_json }}"
